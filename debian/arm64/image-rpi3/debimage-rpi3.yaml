@@ -1,0 +1,102 @@
+{{- $firmware_version := or .firmware_version "1.20170811" -}}
+
+architecture: arm64
+
+actions:
+  # Download all needed proprietary stuff first
+  - action: download
+    url: https://github.com/raspberrypi/firmware/archive/{{ $firmware_version }}.tar.gz
+    unpack: true     # Unpack downloaded file
+    name: firmware # name for usage directory with unpacked content in other actions
+
+  - action: debootstrap
+    suite: "stretch"
+    components:
+      - main
+    mirror: https://deb.debian.org/debian
+    variant: minbase
+
+  - action: apt
+    packages: [ sudo, openssh-server, adduser, systemd-sysv]
+
+  - action: run
+    chroot: true
+    script: setup-user.sh
+
+  - action: run
+    chroot: true
+    command: echo debian > /etc/hostname
+
+  - action: overlay
+    source: networkd
+
+  - action: run
+    chroot: true
+    script: setup-networking.sh
+
+  - action: apt
+    recommends: false
+    packages:
+      - linux-image-arm64
+      - u-boot-rpi
+
+  # add firmware
+  - action: overlay
+    origin: firmware
+    source: firmware-{{ $firmware_version }}/boot
+    destination: /boot/firmware
+
+  - action: run
+    chroot: true
+    command: rm -rf /boot/firmware/kernel*.img /boot/firmware/*.dtb /boot/firmware/overlays
+
+  - action: run
+    chroot: true
+    command: cp /usr/lib/u-boot/rpi_3/* /boot/firmware/
+
+  - action: overlay
+    source: fw-config
+    destination: /boot/firmware
+
+  - action: run
+    chroot: true
+    command: echo console=ttyS0,115200 > /etc/kernel/cmdline
+
+  - action: overlay
+    source: u-boot-menu
+
+  - action: run
+    chroot: true
+    command: u-boot-update
+
+  - action: image-partition
+    imagename: "debian-rpi3.img"
+    imagesize: 1GB
+    partitiontype: msdos
+    mountpoints:
+      - mountpoint: /
+        partition: root
+      - mountpoint: /boot/firmware
+        partition: firmware
+        options: [ x-systemd.automount ]
+    partitions:
+      - name: firmware
+        fs: fat32
+        start: 0%
+        end: 64MB
+      - name: root
+        fs: ext4
+        start: 64MB
+        end: 100%
+        flags: [ boot ]
+
+  - action: filesystem-deploy
+    description: Deploying filesystem onto image
+
+  - action: run
+    postprocess: true
+    command: bmaptool create debian-rpi3.img > debian-rpi3.img.bmap
+
+    #  - action: run
+    #postprocess: true
+    #command: gzip -f debian-rpi3.img
