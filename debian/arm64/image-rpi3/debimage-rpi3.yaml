@@ -1,4 +1,4 @@
-{{- $firmware_version := or .firmware_version "1.20170811" -}}
+{{- $firmware_version := or .firmware_version "1.20171029" -}}
 {{- $image := or .image "debian-rpi3.img" -}}
 
 architecture: arm64
