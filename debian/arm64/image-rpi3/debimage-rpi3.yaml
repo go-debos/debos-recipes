@@ -1,4 +1,5 @@
 {{- $firmware_version := or .firmware_version "1.20170811" -}}
+{{- $image := or .image "debian-rpi3.img" -}}
 
 architecture: arm64
 
@@ -25,7 +26,7 @@ actions:
 
   - action: run
     chroot: true
-    command: echo debian > /etc/hostname
+    command: echo rpi3 > /etc/hostname
 
   - action: overlay
     source: networkd
@@ -70,7 +71,7 @@ actions:
     command: u-boot-update
 
   - action: image-partition
-    imagename: "debian-rpi3.img"
+    imagename: {{ $image }}
     imagesize: 1GB
     partitiontype: msdos
     mountpoints:
@@ -95,8 +96,8 @@ actions:
 
   - action: run
     postprocess: true
-    command: bmaptool create debian-rpi3.img > debian-rpi3.img.bmap
+    command: bmaptool create {{ $image }} > {{ $image }}.img.bmap
 
-    #  - action: run
-    #postprocess: true
-    #command: gzip -f debian-rpi3.img
+  - action: run
+    postprocess: true
+    command: gzip -f {{ $image }}
