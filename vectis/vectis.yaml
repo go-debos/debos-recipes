@@ -1,0 +1,65 @@
+{{- $suite := or .suite "stretch" -}}
+{{- $architecture := or .architecture "amd64" -}}
+{{- $ospack := or .ospack (printf "debian-base-%s-%s" $suite $architecture) -}}
+{{- $image := or .image (printf "vectis-%s-%s"  $suite $architecture) }}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: unpack
+    file: {{ $ospack }}.tar.gz
+
+  - action: overlay
+    source: overlay
+
+  - action: apt
+    packages:
+      - build-essential
+      - systemd-sysv
+      - ifupdown
+      - sudo
+      - udev
+      - grub-pc
+
+  - action: image-partition
+    imagename: {{ $image }}.img
+    imagesize: 10G
+    partitiontype: msdos
+
+    partitions:
+      - name: root
+        fs: ext4
+        start: 1M
+        end: 100%
+    mountpoints: 
+      - mountpoint: /
+        partition: root
+
+  - action: filesystem-deploy
+
+# Install initramfs-tools and friends *after* deploying to the image such that
+# it can embed the generated fstab
+  - action: apt
+    packages:
+      - initramfs-tools
+      - linux-image-amd64
+
+  - action: run
+    chroot: true
+    command: update-grub && grub-install ${IMAGE}
+
+  - action: run
+    chroot: true
+    script: scripts/add-user
+
+  - action: run
+    chroot: true
+    command: systemctl enable systemd-networkd systemd-resolved
+
+  - action: run
+    chroot: false
+    script: scripts/setup-testbed ${ROOTDIR}
+
+  - action: run
+    postprocess: true
+    command: qemu-img convert {{ $image }}.img {{ $image }}.qcow2

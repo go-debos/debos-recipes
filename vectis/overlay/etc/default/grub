@@ -1,0 +1,3 @@
+GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200"
+GRUB_TERMINAL="serial"
+GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200 --stop=1"

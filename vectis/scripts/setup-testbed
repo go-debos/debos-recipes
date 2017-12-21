@@ -1,0 +1,184 @@
+#!/bin/sh
+# Cut-down version of setup-testbed from autopkgtest
+#
+# Copyright (C) 2006-2016 Canonical Ltd.
+# Copyright (C) 2017 Simon McVittie
+#
+# SPDX-License-Identifier: GPL-2.0+
+# (see vectis/__init__.py)
+
+set -eu
+
+# Created files should be readable by user (this script is called as root)
+umask 0022
+
+# avoid debconf hangs
+export DEBIAN_FRONTEND=noninteractive
+
+if [ "${1:-}" = "--help" ]; then
+    echo "Usage: $0 [chroot dir]"
+    echo "if chroot dir is not given, run on the main system (for running in VMs)"
+    exit 0
+fi
+
+root=${1:-/}
+
+# set up init script for root shell on ttyS1; necessary for autopkgtest-virt-qemu local
+# images
+if [ "$root" != "/" ] || [ -e /dev/ttyS1 ]; then
+    cat <<EOF > "$root/etc/init.d/autopkgtest"
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          autopkgtest
+# Required-Start:    \$all
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+### END INIT INFO
+
+if [ "\$1" = start ]; then
+    echo "Starting root shell on ttyS1 for autopkgtest"
+    (setsid sh </dev/ttyS1 >/dev/ttyS1 2>&1) &
+fi
+EOF
+
+    chmod 755 "$root/etc/init.d/autopkgtest"
+    chroot "$root" update-rc.d autopkgtest defaults
+
+    if [ -d "$root/etc/systemd/system" ]; then
+        cat <<EOF > "$root/etc/systemd/system/autopkgtest.service"
+[Unit]
+Description=autopkgtest root shell on ttyS1
+ConditionPathExists=/dev/ttyS1
+
+[Service]
+ExecStart=/bin/sh
+StandardInput=tty-fail
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/ttyS1
+SendSIGHUP=yes
+# ignore I/O errors on unusable ttyS1
+SuccessExitStatus=0 208 SIGHUP SIGINT SIGTERM SIGPIPE
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
+        ln -sf ../autopkgtest.service "$root/etc/systemd/system/multi-user.target.wants/autopkgtest.service"
+    fi
+fi
+
+# serial console for upstart
+if [ -e "$root/etc/init/tty2.conf" -a ! -e "$root/etc/init/ttyS0.conf" ]; then
+    sed 's/tty2/ttyS0/g; s! *exec.*$!exec /sbin/getty -L ttyS0 115200 vt102!' \
+        "$root/etc/init/tty2.conf" > "$root/etc/init/ttyS0.conf"
+fi
+
+ARCH="$(chroot "$root" dpkg --print-architecture)"
+
+# serial console for systemd
+# bump vmalloc on i386, necessary for tests like udisks2
+if [ ! -e "$root/etc/default/grub.d/90-autopkgtest.cfg" ] && chroot "$root" which update-grub >/dev/null 2>&1; then
+    changed=
+    if [ -d "$root/etc/default/grub.d" ]; then
+        if [ "$ARCH" = "i386" ]; then
+            echo 'GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0 vmalloc=512M"' > \
+                "$root/etc/default/grub.d/90-autopkgtest.cfg"
+            changed=1
+        elif [ "$ARCH" = "amd64" ]; then
+            echo 'GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0"' > \
+                "$root/etc/default/grub.d/90-autopkgtest.cfg"
+            changed=1
+        fi
+    else
+        # fallback for Ubuntu 12.04
+        if [ "$ARCH" = "i386" ]; then
+            sed -i '/CMDLINE_LINUX_DEFAULT/ s/"$/ console=ttyS0 vmalloc=512M"/' "$root/etc/default/grub"
+            changed=1
+        elif [ "$ARCH" = "amd64" ]; then
+            sed -i '/CMDLINE_LINUX_DEFAULT/ s/"$/ console=ttyS0"/' "$root/etc/default/grub"
+            changed=1
+        fi
+        if ! grep -q GRUB_HIDDEN_TIMEOUT=0 "$root/etc/default/grub" ; then
+            sed -i '/^GRUB_TIMEOUT=/ s/=.*$/=1/' "$root/etc/default/grub"
+            changed=1
+        fi
+    fi
+    [ -z "${changed:-}" ] || chroot "$root" update-grub || echo "WARNING: update-grub failed!"
+fi
+
+# prevent subsequent cloud-init runs from modifying the apt sources
+if [ -e "$root/etc/cloud/cloud.cfg" ]; then
+    mkdir -p "$root/etc/cloud/cloud.cfg.d"
+    echo 'apt_preserve_sources_list: true' >> "$root/etc/cloud/cloud.cfg.d/01_autopkgtest.cfg"
+fi
+
+# set up networking
+if [ -z "${AUTOPKGTEST_IS_SETUP_COMMAND:-}" ] && ! ls "$root"/etc/systemd/network/*.network >/dev/null 2>&1; then
+    if ! grep -q 'source.*interfaces.d' "$root/etc/network/interfaces"; then
+        printf "\nsource-directory /etc/network/interfaces.d\n" >> "$root/etc/network/interfaces"
+    fi
+
+    IFACE=""
+    if [ "$root" = / ] ; then
+        # we are already in a VM, so figure out our network device
+        if OUT="$(cd /sys/class/net; ls -d e* 2>/dev/null)"; then
+            IFACE="${OUT# *}"
+        fi
+    else
+        # the kernel will choose eth0 as the interface name, so
+        # keep that (and tell udev to not rename the interface,
+        # we won't know how it will be called)
+        IFACE="eth0"
+        if ! [ -e "$root/etc/udev/rules.d/80-net-setup-link.rules" ] ; then
+            ln -s /dev/null "$root/etc/udev/rules.d/80-net-setup-link.rules"
+            chroot "$root" update-initramfs -u
+        fi
+    fi
+    if [ -n "$IFACE" ] ; then
+        mkdir -p "$root/etc/network/interfaces.d"
+        if ! grep -h -r "^[[:space:]]*auto.*$IFACE" "$root/etc/network/interfaces" "$root/etc/network/interfaces.d" | grep -qv 'auto[[:space:]]*lo'; then
+            printf "auto $IFACE\niface $IFACE inet dhcp\n" >> "$root/etc/network/interfaces.d/$IFACE"
+        fi
+    fi
+fi
+
+# go-faster apt/dpkg
+echo "Acquire::Languages \"none\";" > "$root"/etc/apt/apt.conf.d/90nolanguages
+echo 'force-unsafe-io' > "$root"/etc/dpkg/dpkg.cfg.d/autopkgtest
+
+if [ -z "${AUTOPKGTEST_IS_SETUP_COMMAND:-}" ]; then
+    chroot "$root" apt-get update || (sleep 15; chroot "$root" apt-get update)
+fi
+
+# install some necessary packages
+# some tests use a lot of /dev/random, avoid hangs; eatmydata for fast dpkg, a
+# lot of tests expect a logind session
+chroot "$root" apt-get install -y eatmydata dbus < /dev/null
+if ! systemd-detect-virt --quiet --container; then
+    chroot "$root" apt-get install -y haveged </dev/null
+fi
+if [ ! -e "$root/usr/share/doc/libpam-systemd" ] && chroot "$root" apt-cache show libpam-systemd >/dev/null 2>&1; then
+    chroot "$root" apt-get install -y libpam-systemd </dev/null
+fi
+# optimization as we need to install it for most tests anyway
+if [ ! -e "$root/usr/share/doc/dpkg-dev" ]; then
+    chroot "$root" apt-get install -y --no-install-recommends dpkg-dev </dev/null
+fi
+
+# we need Python to run the auxverb helper
+if ! chroot "$root" sh -c 'type python3 >/dev/null 2>&1 || type python >/dev/null 2>&1'; then
+    chroot "$root" eatmydata apt-get install -y --no-install-recommends python3-minimal < /dev/null
+fi
+
+# run post-install commands
+if [ -n "${AUTOPKGTEST_SETUP_VM_POST_COMMAND:-}" ]; then
+    chroot "$root" sh -ec "$AUTOPKGTEST_SETUP_VM_POST_COMMAND"
+fi
+
+if [ -z "${AUTOPKGTEST_IS_SETUP_COMMAND:-}" ]; then
+    chroot "$root" apt-get clean
+fi
+# avoid cron interference with apt-get update
+echo 'APT::Periodic::Enable "0";' > "$root/etc/apt/apt.conf.d/02periodic"
