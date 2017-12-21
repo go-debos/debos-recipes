@@ -1,0 +1,16 @@
+{{- $suite := or .suite "stretch" -}}
+{{- $architecture := or .architecture "amd64" -}}
+{{- $ospack := or .ospack (printf "debian-base-%s-%s" $suite $architecture) -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: debootstrap
+    suite: {{ $suite }}
+    components:
+      - main
+    mirror: https://deb.debian.org/debian
+    variant: minbase
+
+  - action: pack
+    file: {{ $ospack }}.tar.gz
