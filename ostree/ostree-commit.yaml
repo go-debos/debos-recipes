@@ -1,0 +1,45 @@
+{{- $suite := or .suite "stretch" -}}
+{{- $architecture := or .architecture "amd64" -}}
+{{- $ospack := or .ospack (printf "debian-base-%s-%s" $suite $architecture) -}}
+{{- $branch := or .image (printf "debian/%s/%s"  $suite $architecture) }}
+{{- $repo := or .repo "repo" -}}
+{{- $subject := or .subject "update" -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: unpack
+    file: {{ $ospack }}.tar.gz
+
+  - action: overlay
+    source: overlays/ostree
+
+  - action: apt
+    packages:
+      - systemd-sysv
+      - sudo
+      - udev
+      - grub-efi
+      - dracut
+      - linux-image-amd64
+
+  - action: run
+    chroot: true
+    script: scripts/add-user
+
+  - action: run
+    chroot: true
+    command: systemctl enable systemd-networkd systemd-resolved
+
+  - action: run
+    chroot: true
+    script: scripts/ostree-prepare.sh
+
+  - action: run
+    chroot: false
+    script: scripts/ostree-convert-from-debian
+
+  - action: ostree-commit
+    repository: {{ $repo }}
+    branch: {{ $branch }}
+    subject: {{ $subject }}

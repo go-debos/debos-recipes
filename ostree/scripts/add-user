@@ -1,0 +1,6 @@
+#!/bin/sh
+
+adduser -gecos "Default user" --disabled-login user
+echo "user:user" | chpasswd
+
+adduser user sudo

@@ -1,0 +1,73 @@
+{{- $suite := or .suite "stretch" -}}
+{{- $architecture := or .architecture "amd64" -}}
+{{- $ospack := or .ospack (printf "debian-base-%s-%s" $suite $architecture) -}}
+{{- $image := or .image (printf "debian-uefi-image-%s-%s" $suite $architecture) -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: unpack
+    file: {{ $ospack }}.tar.gz
+
+  - action: overlay
+    source: overlays/base
+
+  - action: apt
+    packages:
+      - systemd-sysv
+      - sudo
+      - udev
+
+  - action: run
+    chroot: true
+    script: scripts/add-user
+
+  - action: run
+    chroot: true
+    command: systemctl enable systemd-networkd systemd-resolved
+
+  - action: image-partition
+    imagename: {{ $image }}.img
+    imagesize: 3G
+    partitiontype: gpt
+    mountpoints:
+      - mountpoint: /
+        partition: root
+      - mountpoint: /boot/efi
+        partition: efi
+        flags: [ boot ]
+    partitions:
+      - name: efi
+        fs: vfat
+        start: 0%
+        end: 256MB
+        options: [ x-systemd.automount ]
+      - name: root
+        fs: ext4
+        start: 256MB
+        end: 100%
+
+  - action: run
+    chroot: false
+    command: find /scratch/mnt/
+
+  - action: filesystem-deploy
+
+  - action: apt
+    packages:
+      - grub-efi
+      - initramfs-tools
+      - linux-image-amd64
+
+  - action: run
+    chroot: true
+    command: update-grub
+
+  - action: run
+    chroot: true
+    command: grub-install --target=x86_64-efi --no-nvram
+
+  - action: run
+    chroot: true
+    command: mkdir -p /boot/efi/EFI/BOOT && cp /boot/efi/EFI/grub/grubx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI
+

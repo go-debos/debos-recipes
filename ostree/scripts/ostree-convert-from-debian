@@ -1,0 +1,226 @@
+#! /usr/bin/python3
+# Copyright (C) 2013, 2016 Collabora Ltd
+# Author: Sjoerd Simons <sjoerd.simons@collabora.co.uk>
+#
+#
+import os
+import shutil
+import sys
+import tempfile
+import logging
+import argparse
+import hashlib
+import time
+import subprocess
+from tempfile import NamedTemporaryFile
+
+def setup_boot (rootdir, bootdir):
+    vmlinuz = None
+    initrd = None
+    dtbs = None
+    version = None
+    for item in os.listdir (bootdir):
+        if item.startswith("vmlinuz"):
+            assert vmlinuz == None
+            vmlinuz = os.path.join(bootdir, item)
+            _, version = vmlinuz.split("-", 1)
+        elif item.startswith("initrd.img") or item.startswith("initramfs"):
+            assert initrd == None
+            initrd = os.path.join(bootdir, item)
+        elif item.startswith("dtbs"):
+            assert dtbs == None
+            dtbs = os.path.join(bootdir, item)
+    assert vmlinuz != None
+    assert initrd != None
+
+    if dtbs == None:
+        dtbs = os.path.join(rootdir, "usr", "lib", "linux-image-" + version)
+        if not os.path.isdir(dtbs):
+            dtbs = None
+
+    m = hashlib.sha256()
+    m.update(open (os.path.join (bootdir, vmlinuz), mode="rb").read())
+    if initrd != None:
+        m.update (open (os.path.join (bootdir, initrd), "rb").read())
+
+    csum = m.hexdigest()
+
+
+    os.rename (os.path.join (bootdir, vmlinuz),
+        os.path.join (bootdir, vmlinuz + "-" + csum))
+    os.rename (os.path.join (bootdir, initrd),
+      os.path.join (bootdir,
+                initrd.replace ("initrd.img", "initramfs") + "-" + csum))
+
+    if dtbs != None:
+        shutil.move (dtbs, os.path.join (bootdir, "dtbs-" + version + "-" + csum))
+
+def split_passwd_files (rootdir):
+    # Copy first so it keeps the same permissions
+    shutil.copy (os.path.join (rootdir, "usr", "etc", "passwd"),
+        os.path.join (rootdir, "lib", "passwd"))
+    shutil.copy (os.path.join (rootdir, "usr", "etc", "group"),
+        os.path.join (rootdir, "lib", "group"))
+
+    # filter UID < 1000 into lib/passwd, everything else into usr/etc/passwd
+    content = open(os.path.join (rootdir, "usr", "etc", "passwd")).read()
+    etcpasswd = open (os.path.join (rootdir, "usr", "etc", "passwd"), "w")
+    libpasswd = open (os.path.join (rootdir, "lib", "passwd"), "w")
+    etcpasswd.truncate(0)
+    libpasswd.truncate(0)
+
+    for line in content.split("\n"):
+        pieces = line.split(":")
+        # skip empty lines
+        if len(pieces) < 2:
+            continue
+        uid = int (pieces[2])
+        # 65534 is nobody
+        if uid >= 1000 and uid < 65534:
+            etcpasswd.write(line + "\n")
+        else:
+            pieces[1] = "*"
+            libpasswd.write (":".join(pieces) + "\n")
+    etcpasswd.close()
+    libpasswd.close()
+
+    # Filter all entries without passowrds out of shadow
+    # TODO should really check if there are system users in there with a
+    # passwrd (e.g. root)
+    content = open(os.path.join (rootdir, "usr", "etc", "shadow")).read()
+    shadow = open (os.path.join (rootdir, "usr", "etc", "shadow"), "w")
+    shadow.truncate(0)
+    for line in content.split("\n"):
+        pieces = line.split(":")
+        if len(pieces) < 2:
+            continue
+        if len(pieces[1]) > 1:
+            shadow.write(line + "\n")
+    shadow.close()
+
+    # Whitelist a bunch of groups that are user modifiable (e.g. admin users)
+    # into /usr/etc/group, everthing else in /lib/group
+    content = open(os.path.join (rootdir, "usr", "etc", "group")).read()
+    etcgroup = open (os.path.join (rootdir, "usr", "etc", "group"), "w")
+    libgroup = open (os.path.join (rootdir, "lib", "group"), "w")
+
+    etcgroup.truncate()
+    libgroup.truncate()
+
+    for line in content.split("\n"):
+        pieces = line.split(":")
+        ETCGROUPS = [ "plugdev", "staff", "audio",
+            "video", "sudo", "adm", "lpadm",
+            "admin" ]
+        if len(pieces) < 2:
+            continue
+        if pieces[0] in ETCGROUPS:
+            etcgroup.write(line + "\n")
+        else:
+            libgroup.write(line + "\n")
+    etcgroup.close()
+    libgroup.close()
+
+def get_toplevel(path):
+    head, tail = os.path.split(path)
+    while head != '/' and  head != '':
+        head, tail = os.path.split(head)
+
+    return tail
+
+def sanitize_usr_symlinks(rootdir):
+# Replace symlinks from /usr pointing to /var with the actual file content as
+# var will be dropped
+    usrdir = os.path.join(rootdir, "usr")
+    for base, dirs, files in os.walk(usrdir):
+        for name in files:
+            p = os.path.join(base, name)
+
+            if not os.path.islink(p):
+                continue
+
+            # Resolve symlink relative to root
+            l = os.readlink(p)
+            if os.path.isabs(l):
+                target = os.path.join(rootdir, l[1:])
+            else:
+                target = os.path.join(base, l)
+
+            rel = os.path.relpath(target, rootdir)
+            # Keep symlinks if they're pointing to a location under /usr
+            if os.path.commonpath([target, usrdir]) == usrdir:
+                continue
+
+            toplevel = get_toplevel(rel)
+
+            # Sanitize links going into /var, potentially other location can
+            # be added later
+            if toplevel != 'var':
+                continue
+
+            os.remove(p)
+            os.link(target, p)
+
+def convert_to_ostree(rootdir):
+    CRUFT = [ "boot/initrd.img", "boot/vmlinuz",
+              "initrd.img", "initrd.img.old",
+              "vmlinuz", "vmlinuz.old" ]
+    assert rootdir != None and rootdir != ""
+    # Empty /dev
+    shutil.rmtree (os.path.join (rootdir, "dev"))
+    os.mkdir (os.path.join (rootdir, "dev"), 0o755)
+
+    sanitize_usr_symlinks(rootdir)
+    # Clean var but keep the directory as it's used as a mount point
+    shutil.rmtree (os.path.join (rootdir, "var"))
+    os.mkdir (os.path.join (rootdir, "var"), 0o755)
+
+    # Remove boot/grub, part of the deployment image not of the ostree commit
+    #shutil.rmtree (os.path.join (rootdir, "boot", "grub"))
+
+    for c in CRUFT:
+        try:
+          os.remove(os.path.join (rootdir, c))
+        except OSError:
+          pass
+
+    # Setup and split out etc
+    shutil.move (os.path.join (rootdir, "etc"),
+        os.path.join (rootdir, "usr"))
+
+    # Don't split passwd as there is no altfiles nss module in debian atm
+    #split_passwd_files (rootdir)
+
+    f = open (os.path.join (rootdir, "usr", "etc", "fstab"), "w")
+    f.write("")
+    f.close()
+    f = open (
+        os.path.join (rootdir, "usr", "lib", "tmpfiles.d", "ostree.conf"), "w")
+    f.write("""
+L /var/home - - - - ../sysroot/home
+d /var/roothome 0700 root root -
+d /var/local 0755 root root -
+d /run/media 0755 root root -
+""")
+
+    try:
+        os.mkdir (os.path.join (rootdir, "sysroot"))
+    except OSError:
+        pass
+
+    SYMLINKS = [
+        ( "/sysroot/ostree", "ostree" ),
+        ( "/var/home", "home" ),
+        ( "/var/roothome", "root" ),
+        ( "/var/local", "usr/local" ),
+        ( "/run/media", "media" ) ]
+
+    for (target, link) in SYMLINKS:
+        shutil.rmtree (os.path.join (rootdir, link), True)
+        os.symlink(target, os.path.join (rootdir, link))
+
+if __name__ == '__main__':
+    rootdir = os.environ["ROOTDIR"]
+
+    setup_boot (rootdir, os.path.join(rootdir, "boot"))
+    convert_to_ostree (rootdir)

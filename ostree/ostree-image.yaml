@@ -1,0 +1,65 @@
+{{- $suite := or .suite "stretch" -}}
+{{- $architecture := or .architecture "amd64" -}}
+{{- $branch := or .image (printf "debian/%s/%s"  $suite $architecture) }}
+{{- $repo := or .repo "repo" -}}
+{{- $image := or .image (printf "ostree-image-%s-%s" $suite $architecture) -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: image-partition
+    imagename: {{ $image }}.img
+    imagesize: 3G
+    partitiontype: gpt
+    mountpoints:
+      - mountpoint: /
+        partition: root
+      - mountpoint: /boot
+        partition: boot
+      - mountpoint: /boot/efi
+        partition: efi
+        flags: [ boot ]
+    partitions:
+      - name: efi
+        fs: vfat
+        start: 0%
+        end: 64MB
+        options: [ x-systemd.automount ]
+      - name: boot
+        fs: ext4
+        start: 64MB
+        end: 256MB
+        options: [ x-systemd.automount ]
+      - name: root
+        fs: ext4
+        start: 256MB
+        end: 100%
+
+  - action: run
+    chroot: false
+    command: mkdir -p ${ROOTDIR}/boot/grub2 && touch ${ROOTDIR}/boot/grub2/grub.cfg 
+
+  - action: run
+    description: Setting up base bootloader configuration
+    chroot: false
+    script: scripts/setup-grub-efi
+
+  - action: ostree-deploy
+    repository: {{ $repo }}
+    branch: {{ $branch }}
+    os: debian
+    append-kernel-cmdline: splash quiet plymouth.ignore-serial-consoles
+
+  - action: run
+    chroot: true
+    command: grub-install --target=x86_64-efi --no-nvram
+
+  - action: run
+    description: Creating bmap for image
+    postprocess: true
+    command: bmaptool create {{ $image }}.img > {{ $image }}.bmap
+
+#  - action: run
+#    description: Compressing image
+#    postprocess: true
+#    command: gzip -f {{ $image }}
