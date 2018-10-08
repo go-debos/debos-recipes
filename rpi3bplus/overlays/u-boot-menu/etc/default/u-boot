@@ -9,6 +9,6 @@ U_BOOT_MENU_LABEL="Debian GNU/Linux"
 U_BOOT_PARAMETERS="root=/dev/mmcblk0p2 ro rootwait console=ttyS1,115200"
 U_BOOT_ROOT=""
 U_BOOT_TIMEOUT="50"
-U_BOOT_FDT="broadcom/bcm2837-rpi-3-b.dtb"
+U_BOOT_FDT="broadcom/bcm2837-rpi-3-b-plus.dtb"
 #U_BOOT_FDT_DIR="/boot/dtbs/"
 
