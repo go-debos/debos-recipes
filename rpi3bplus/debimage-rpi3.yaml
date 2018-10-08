@@ -18,7 +18,13 @@ actions:
     variant: minbase
 
   - action: apt
-    packages: [ sudo, openssh-server, adduser, systemd-sysv]
+    packages:
+      - sudo
+      - openssh-server
+      - adduser
+      - systemd-sysv
+      - linux-image-arm64
+      - u-boot-rpi
 
   - action: run
     chroot: true
@@ -34,12 +40,6 @@ actions:
   - action: run
     chroot: true
     script: scripts/setup-networking.sh
-
-  - action: apt
-    recommends: false
-    packages:
-      - linux-image-arm64
-      - u-boot-rpi
 
   # add firmware
   - action: overlay
