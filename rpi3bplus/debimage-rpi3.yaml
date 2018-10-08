@@ -26,6 +26,12 @@ actions:
       - linux-image-arm64
       - u-boot-rpi
       - u-boot-menu
+      - wget
+
+  - action: run
+    description: This is a hack to remove when u-boot 2018.09 arrives to buster
+    chroot: true
+    script: scripts/replace-u-boot-rpi.sh
 
   - action: run
     chroot: true
