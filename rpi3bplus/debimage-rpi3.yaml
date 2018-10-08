@@ -25,6 +25,7 @@ actions:
       - systemd-sysv
       - linux-image-arm64
       - u-boot-rpi
+      - u-boot-menu
 
   - action: run
     chroot: true
