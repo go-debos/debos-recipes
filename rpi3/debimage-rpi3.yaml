@@ -96,7 +96,7 @@ actions:
 
   - action: run
     postprocess: true
-    command: bmaptool create {{ $image }} > {{ $image }}.img.bmap
+    command: bmaptool create {{ $image }} > {{ $image }}.bmap
 
   - action: run
     postprocess: true
