@@ -6,6 +6,7 @@ architecture: arm64
 actions:
   # Download all needed proprietary stuff first
   - action: download
+    description: Download latest version of the firmware from GitHub
     url: https://github.com/raspberrypi/firmware/archive/{{ $firmware_version }}.tar.gz
     unpack: true     # Unpack downloaded file
     name: firmware # name for usage directory with unpacked content in other actions
@@ -18,6 +19,7 @@ actions:
     variant: minbase
 
   - action: apt
+    description: Install extra packages
     packages:
       - sudo
       - openssh-server
@@ -34,10 +36,12 @@ actions:
     script: scripts/replace-u-boot-rpi.sh
 
   - action: run
+    description: Set up user
     chroot: true
     script: scripts/setup-user.sh
 
   - action: run
+    description: Add hostname
     chroot: true
     command: echo rpi3 > /etc/hostname
 
@@ -102,9 +106,11 @@ actions:
     description: Deploying filesystem onto image
 
   - action: run
+    description: Create block map file
     postprocess: true
     command: bmaptool create {{ $image }} > {{ $image }}.bmap
 
   - action: run
+    description: Compressing final image
     postprocess: true
     command: gzip -f {{ $image }}
