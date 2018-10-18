@@ -1,0 +1,70 @@
+{{- $suite := or .suite "stretch" -}}
+{{- $architecture := or .architecture "armhf" -}}
+{{- $ospack := or .ospack (printf "debian-base-%s-%s" $suite $architecture) -}}
+{{- $image := or .image (printf "debian-uboot-image-%s-%s" $suite $architecture) -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: unpack
+    file: {{ $ospack }}
+
+  - action: overlay
+    source: overlays/base
+
+  - action: apt
+    packages:
+      - systemd-sysv
+      - sudo
+      - udev
+      - libnss-systemd
+
+  - action: run
+    chroot: true
+    script: scripts/add-user
+
+  - action: run
+    chroot: true
+    command: systemctl enable systemd-networkd systemd-resolved
+
+  - action: image-partition
+    imagename: {{ $image }}.img
+    imagesize: 3G
+    partitiontype: gpt
+    mountpoints:
+      - mountpoint: /
+        partition: root
+    partitions:
+      - name: root
+        fs: ext4
+        start: 0%
+        end: 100%
+        flags: [boot ]
+
+  - action: filesystem-deploy
+
+  - action: apt
+    packages:
+      - initramfs-tools
+{{ if eq $architecture "armhf" }}
+      - linux-image-armmp
+{{ else }}
+      - linux-image-arm64
+{{ end }}
+      - u-boot-menu
+
+  - action: run
+    description: Create block map for {{ $image }}.img
+    postprocess: true
+    command: bmaptool create {{ $image }}.img > {{ $image }}.img.bmap
+
+  - action: run
+    description: Compress {{ $image }}.img
+    postprocess: true
+    command: gzip -f {{ $image }}.img
+
+  - action: run
+    description: Checksum for {{ $image }}.img.gz
+    postprocess: true
+    command: md5sum {{ $image }}.img.gz > {{ $image }}.img.gz.md5
+
