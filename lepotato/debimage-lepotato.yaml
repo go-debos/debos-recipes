@@ -1,0 +1,49 @@
+{{- $mirror := or .mirror "http://deb.debian.org/debian" -}}
+{{- $suite := or .suite "bullseye" -}}
+{{- $adminusername := or .adminusername "user" -}}
+{{ $image := or .image (printf "debian-lepotato-%s.img" $suite) }}
+
+architecture: arm64
+
+actions:
+  - action: debootstrap
+    suite: {{ $suite }}
+    components:
+      - main
+    mirror: {{ $mirror }}
+    variant: minbase
+
+  - action: apt
+    packages: [ sudo, adduser, systemd-sysv, initramfs-tools, u-boot-tools, u-boot-menu, util-linux,
+                linux-image-arm64, u-boot-amlogic ]
+
+  - action: run
+    chroot: true
+    command: echo lepotato > /etc/hostname
+
+  - action: run
+    chroot: true
+    script: scripts/setup-user.sh  {{ $adminusername }}
+
+  - action: image-partition
+    imagename: {{ $image }}
+    imagesize: 1GB
+    partitiontype: msdos
+    mountpoints:
+      - mountpoint: /
+        partition: root
+    partitions:
+      - name: root
+        fs: ext4
+        start: 2MB
+        end: 100%
+        flags: [ boot ]
+
+  - action: filesystem-deploy
+    description: Deploying filesystem onto image
+
+  # Update U-Boot menu after creation of image partitions and filesystem
+  # deployment to get correct root information from /etc/fstab
+  - action: run
+    chroot: true
+    command: u-boot-update

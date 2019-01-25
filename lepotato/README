@@ -1,0 +1,6 @@
+The u-boot binary needs some tweaks before installing it, this is described in
+u-boot-amlogic documentation (cf. doc/board/amlogic/libretech-cc.rst in u-boot
+sources).
+
+You can retrieve libretech-cc's u-boot.bin from u-boot-amlogic package installed
+on the target image.
