@@ -15,6 +15,7 @@ actions:
 
   - action: apt
     packages: [ sudo, adduser, systemd-sysv, initramfs-tools, u-boot-tools, u-boot-menu, util-linux,
+                openssh-server, iproute2, network-manager, libnss-myhostname,
                 linux-image-arm64, u-boot-amlogic ]
 
   - action: run
