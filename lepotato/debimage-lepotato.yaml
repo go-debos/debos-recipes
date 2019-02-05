@@ -14,15 +14,18 @@ actions:
     variant: minbase
 
   - action: apt
+    description: Install Kernel, U-Boot and extra packages
     packages: [ sudo, adduser, systemd-sysv, initramfs-tools, u-boot-tools, u-boot-menu, util-linux,
                 openssh-server, iproute2, network-manager, libnss-myhostname,
                 linux-image-arm64, u-boot-amlogic ]
 
   - action: run
+    description: Add hostname
     chroot: true
     command: echo lepotato > /etc/hostname
 
   - action: run
+    description: Set up user
     chroot: true
     script: scripts/setup-user.sh  {{ $adminusername }}
 
@@ -46,5 +49,6 @@ actions:
   # Update U-Boot menu after creation of image partitions and filesystem
   # deployment to get correct root information from /etc/fstab
   - action: run
+    description: Update U-Boot menu
     chroot: true
     command: u-boot-update
