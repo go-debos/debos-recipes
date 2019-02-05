@@ -6,5 +6,6 @@ Collection of recipes for ['debos' tool](https://github.com/go-debos/debos).
   It has been tested with `bullseye` and `sid` by using additional parameters:
   debos -t suite:sid -t kernel:linux-image-5.8.0-1-arm64-unsigned rpi64/debimage-rpi64.yaml
   Use login 'user' with password 'user' to log in.
+* `lepotato` contains a recipe for building an image for `bookworm`.
 
 Initial recipes for Debian are based on previous work located at https://git.apertis.org/cgit/apertis-workshop.git
