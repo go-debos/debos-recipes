@@ -1,5 +1,5 @@
 {{- $firmware_version := or .firmware_version "1.20180919" -}}
-{{- $image := or .image "debian-rpi3.img" -}}
+{{- $image := or .image "debian-rpi3bplus.img" -}}
 
 architecture: arm64
 
