@@ -52,3 +52,13 @@ actions:
     description: Update U-Boot menu
     chroot: true
     command: u-boot-update
+
+  - action: run
+    description: Create block map file
+    postprocess: true
+    command: bmaptool create {{ $image }} > {{ $image }}.bmap
+
+  - action: run
+    description: Compressing final image
+    postprocess: true
+    command: gzip -f {{ $image }}
