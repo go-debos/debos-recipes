@@ -1,0 +1,87 @@
+{{- $image := or .image "debian-wb.img" -}}
+
+architecture: armhf
+
+actions:
+  - action: debootstrap
+    suite: "buster"
+    components:
+      - main
+    mirror: https://deb.debian.org/debian
+    variant: minbase
+
+  - action: apt
+    packages: [ sudo, openssh-server, adduser, systemd-sysv]
+
+  - action: run
+    chroot: true
+    script: setup-user.sh
+
+  - action: run
+    chroot: true
+    command: echo wandboard > /etc/hostname
+
+  - action: overlay
+    source: networkd
+
+  - action: run
+    chroot: true
+    script: setup-networking.sh
+
+  - action: apt
+    recommends: false
+    packages:
+      - linux-image-armmp
+      - u-boot-imx
+
+  # Note: cma reserves continuous video memory for graphics
+  - action: run
+    chroot: true
+    command: echo console=ttymxc0,115200 quiet cma=256M > /etc/kernel/cmdline
+
+  # Make dtb easy to find (normally flash-kernel does this for us)
+  - action: run
+    chroot: true
+    command: ln -rsf /usr/lib/linux-image-*-armmp/imx6q-wandboard.dtb /boot/dtb
+
+  # generate a boot.scr and put in $ROOTDIR/boot/boot.scr
+  - action: run
+    script: gen-bootscript.sh
+
+  # partition table
+  - action: image-partition
+    imagename: {{ $image }}
+    imagesize: 1GB
+    partitiontype: msdos
+    mountpoints:
+      - mountpoint: /
+        partition: root
+    partitions:
+      - name: root
+        fs: ext4
+        start: 1M
+        end: 100%
+        flags: [ boot ]
+
+  - action: filesystem-deploy
+    description: Deploying filesystem onto image
+
+  # Write u-boot SPL and full version
+  # (note: must be done after partition table writing or will be wiped!)
+  - action: raw
+    origin: filesystem
+    source: /usr/lib/u-boot/wandboard/SPL
+    offset: 1024 # bs=1k seek=1
+
+  - action: raw
+    origin: filesystem
+    source: /usr/lib/u-boot/wandboard/u-boot.img
+    offset: 70656 # bs=1k seek=69
+
+  - action: run
+    postprocess: true
+    command: bmaptool create {{ $image }} > {{ $image }}.bmap
+
+  - action: run
+    postprocess: true
+    command: gzip -f {{ $image }}
