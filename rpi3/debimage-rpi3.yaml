@@ -1,4 +1,4 @@
-{{- $firmware_version := or .firmware_version "1.20171029" -}}
+{{- $firmware_version := or .firmware_version "1.20180919" -}}
 {{- $image := or .image "debian-rpi3.img" -}}
 
 architecture: arm64
@@ -22,18 +22,18 @@ actions:
 
   - action: run
     chroot: true
-    script: setup-user.sh
+    script: scripts/setup-user.sh
 
   - action: run
     chroot: true
     command: echo rpi3 > /etc/hostname
 
   - action: overlay
-    source: networkd
+    source: overlays/networkd
 
   - action: run
     chroot: true
-    script: setup-networking.sh
+    script: scripts/setup-networking.sh
 
   - action: apt
     recommends: false
@@ -56,7 +56,7 @@ actions:
     command: cp /usr/lib/u-boot/rpi_3/* /boot/firmware/
 
   - action: overlay
-    source: fw-config
+    source: overlays/fw-config
     destination: /boot/firmware
 
   - action: run
@@ -64,7 +64,7 @@ actions:
     command: echo console=ttyS0,115200 > /etc/kernel/cmdline
 
   - action: overlay
-    source: u-boot-menu
+    source: overlays/u-boot-menu
 
   - action: run
     chroot: true
@@ -96,7 +96,7 @@ actions:
 
   - action: run
     postprocess: true
-    command: bmaptool create {{ $image }} > {{ $image }}.img.bmap
+    command: bmaptool create {{ $image }} > {{ $image }}.bmap
 
   - action: run
     postprocess: true
