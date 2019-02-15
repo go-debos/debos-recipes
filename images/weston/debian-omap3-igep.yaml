@@ -1,0 +1,62 @@
+{{- $suite := or .suite "buster" -}}
+{{- $architecture := or .architecture "armhf" -}}
+{{- $machine := or .machine "omap3-igep" -}}
+{{- $ospack := or .ospack (printf "debian-base-%s-%s" $suite $architecture) -}}
+{{- $image := or .image (printf "debian-%s-%s-%s" $machine $suite $architecture) -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: unpack
+    file: {{ $ospack }}.tar.gz
+
+  - action: image-partition
+    imagename: {{ $image }}.img
+    imagesize: 2GB
+    partitiontype: msdos
+    mountpoints:
+      - mountpoint: /
+        partition: root
+      - mountpoint: /usr/lib/u-boot/igep00x0/
+        partition: u-boot
+        options: [ x-systemd.automount ]
+    partitions:
+      - name: u-boot
+        fs: fat32
+        start: 0%
+        end: 32MB
+        flags: [ boot ]
+      - name: root
+        fs: ext4
+        start: 32MB
+        end: 100%
+
+  - action: filesystem-deploy
+
+  - action: apt
+    packages:
+      - u-boot-omap
+      - u-boot-menu
+
+  - action: apt
+    packages:
+      - linux-image-armmp
+
+  - action: run
+    chroot: true
+    command: u-boot-update
+
+  - action: run
+    description: Create bmap file
+    postprocess: true
+    command: bmaptool create {{ $image }}.img > {{ $image }}.img.bmap
+
+  - action: run
+    description: Compress {{ $image }}.img
+    postprocess: true
+    command: gzip -f {{ $image }}.img
+
+  - action: run
+    description: Checksum for {{ $image }}.img.gz
+    postprocess: true
+    command: md5sum {{ $image }}.img.gz > {{ $image }}.img.gz.md5

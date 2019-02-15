@@ -1,0 +1,69 @@
+{{- $suite := or .suite "buster" -}}
+{{- $architecture := or .architecture "armhf" -}}
+{{- $machine := or .machine "boneblack" -}}
+{{- $ospack := or .ospack (printf "debian-base-%s-%s" $suite $architecture) -}}
+{{- $image := or .image (printf "debian-%s-%s-%s" $machine $suite $architecture) -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: unpack
+    file: {{ $ospack }}.tar.gz
+
+  - action: image-partition
+    imagename: {{ $image }}.img
+    imagesize: 4G
+    partitiontype: gpt
+    mountpoints:
+      - mountpoint: /
+        partition: root
+        flags: [ boot ]
+    partitions:
+      - name: root
+        fs: ext4
+        start: 8MB
+        end: 100%
+
+  - action: filesystem-deploy
+
+  - action: apt
+    packages:
+      - u-boot-omap
+      - u-boot-menu
+
+  # Install the kernel after everything else such that generation of the
+  # initramfs only gets triggered once
+  - action: apt
+    packages:
+      - linux-image-armmp
+
+  - action: run
+    chroot: true
+    command: u-boot-update
+
+  - action: raw
+    description: Flash MLO
+    origin: filesystem
+    offset: {{ sector 256 }}
+    source: /usr/lib/u-boot/am335x_{{ $machine }}/MLO
+
+  - action: raw
+    description: Flash u-boot
+    origin: filesystem
+    offset: {{ sector 768 }}
+    source: /usr/lib/u-boot/am335x_{{ $machine }}/u-boot.img
+
+  - action: run
+    description: Create bmap file
+    postprocess: true
+    command: bmaptool create {{ $image }}.img > {{ $image }}.img.bmap
+
+  - action: run
+    description: Compress {{ $image }}.img
+    postprocess: true
+    command: gzip -f {{ $image }}.img
+
+  - action: run
+    description: Checksum for {{ $image }}.img.gz
+    postprocess: true
+    command: md5sum {{ $image }}.img.gz > {{ $image }}.img.gz.md5

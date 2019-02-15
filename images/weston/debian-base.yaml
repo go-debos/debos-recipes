@@ -1,0 +1,79 @@
+{{- $suite := or .suite "buster" -}}
+{{- $architecture := or .architecture "amd64" -}}
+{{- $ospack := or .ospack (printf "debian-base-%s-%s" $suite $architecture) -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: debootstrap
+    suite: {{ $suite }}
+    components:
+      - main
+    mirror: https://deb.debian.org/debian
+    variant: minbase
+
+  - action: apt
+    packages:
+      - apt-transport-https
+      - ca-certificates
+
+  - action: overlay
+    source: overlays/base
+
+  - action: run
+    chroot: true
+    command: apt-get update
+
+  - action: apt
+    packages:
+      - acl
+      - dracut
+      - libnss-myhostname
+      - locales
+      - openssh-server
+      - sudo
+      - vim-tiny
+      - less
+      - weston
+      - dbus-user-session
+      - systemd-sysv
+      - net-tools
+      - vim-tiny
+      - iproute2
+      - udev
+
+  - action: run
+    chroot: true
+    script: scripts/setup-user.sh
+
+  - action: run
+    description: Add debian user to the video group
+    chroot: true
+    command: adduser debian video
+
+  - action: run
+    description: Set hostname
+    chroot: true
+    command: echo debian > /etc/hostname
+
+  - action: overlay
+    description: Log automatically on the serial console
+    source: overlays/auto-login
+
+  - action: overlay
+    description: Add network configuration
+    source: overlays/networkd
+
+  - action: run
+    description: Setup networking
+    chroot: true
+    script: scripts/setup-networking.sh
+
+  - action: run
+    description: Setup wayland compositor
+    chroot: true
+    command: systemctl enable weston
+
+  - action: pack
+    file: {{ $ospack }}.tar.gz
+

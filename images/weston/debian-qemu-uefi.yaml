@@ -1,0 +1,69 @@
+{{- $suite := or .suite "buster" -}}
+{{- $architecture := or .architecture "amd64" -}}
+{{- $ospack := or .ospack (printf "debian-base-%s-%s" $suite $architecture) -}}
+{{- $image := or .image (printf "debian-qemu-uefi-%s-%s" $suite $architecture) -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: unpack
+    file: {{ $ospack }}.tar.gz
+
+  - action: image-partition
+    imagename: {{ $image }}.img
+    imagesize: 4G
+    partitiontype: gpt
+    mountpoints:
+      - mountpoint: /
+        partition: root
+      - mountpoint: /boot/efi
+        partition: efi
+        flags: [ boot ]
+    partitions:
+      - name: efi
+        fs: vfat
+        start: 0%
+        end: 256MB
+        options: [ x-systemd.automount ]
+      - name: root
+        fs: ext4
+        start: 256MB
+        end: 100%
+
+  - action: overlay
+    source: overlays/grub
+
+  - action: filesystem-deploy
+
+  - action: apt
+    packages:
+      - grub-efi
+      - linux-image-amd64
+
+  - action: run
+    chroot: true
+    command: update-grub
+
+  - action: run
+    chroot: true
+    command: grub-install --target=x86_64-efi --no-nvram
+
+  - action: run
+    chroot: true
+    command: mkdir -p /boot/efi/EFI/BOOT && cp /boot/efi/EFI/debian/grubx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI
+
+  # For VirtualBox
+  - action: run
+    description: Convert raw image to {{ $image }}.vdi
+    postprocess: true
+    command: qemu-img convert -O vdi {{ $image }}.img {{ $image }}.vdi
+
+  #- action: run
+  #  description: Compress {{ $image }}.vdi
+  #  postprocess: true
+  #  command: gzip -f {{ $image }}.vdi
+
+  #- action: run
+  #  description: Checksum for {{ $image }}.vdi.gz
+  #  postprocess: true
+  #  command: md5sum {{ $image }}.vdi.gz > {{ $image }}.vdi.gz.md5
