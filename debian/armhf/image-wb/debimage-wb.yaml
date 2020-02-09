@@ -29,9 +29,11 @@ actions:
     script: setup-networking.sh
 
   - action: apt
+    chroot: true
     recommends: false
     packages:
       - linux-image-armmp
+      - u-boot-tools
       - u-boot-imx
 
   # Note: cma reserves continuous video memory for graphics
@@ -46,6 +48,7 @@ actions:
 
   # generate a boot.scr and put in $ROOTDIR/boot/boot.scr
   - action: run
+    chroot: true
     script: gen-bootscript.sh
 
   # partition table
