@@ -1,0 +1,81 @@
+{{- $ubootPath := or .ubootPath "/usr/lib/u-boot/rock-pi-4-rk3399" -}}
+{{- $image := or .image "debian-rockpi4.img" -}}
+{{- $nfsImage := or .image "debian-rockpi4.tar.gz" -}}
+
+architecture: arm64
+
+actions:
+  - action: debootstrap
+    suite: testing
+    components:
+      - main
+    mirror: https://deb.debian.org/debian
+    variant: minbase
+
+  - action: apt
+    packages: [ libc6, sudo, adduser, systemd-sysv, initramfs-tools,
+                u-boot-tools, u-boot-menu, util-linux, unzip, weston,
+                policykit-1, kbd, locales, network-manager,
+                libsensors5, libllvm9, ssh, ssh-import-id, net-tools,
+                iputils-ping, libgl1-mesa-dri, libglapi-mesa, libegl-mesa0,
+                libgbm1, libgles1, libgles2, libgl1, linux-image-arm64,
+                libv4l-0, u-boot-rockchip ]
+
+  - action: image-partition
+    imagename: {{$image}}
+    imagesize: 7GB
+    partitiontype: gpt
+    mountpoints:
+      - mountpoint: /
+        partition: root
+    partitions:
+      - name: root
+        fs: ext4
+        start: 32768s
+        end: 100%
+        flags: [ boot ]
+
+  # Deploy the filesystem to an image
+  - action: filesystem-deploy
+    description: Deploying filesystem onto image
+
+  - action: overlay
+    source: overlays/
+    destination: /
+
+  - action: run
+    chroot: true
+    script: scripts/setup-user.sh
+
+  - action: run
+    chroot: true
+    command: systemctl enable weston && systemctl enable serial-getty@ttyS2.service
+
+  - action: run
+    description: Set hostname
+    chroot: true
+    command: echo debian > /etc/hostname && echo "127.0.0.1 debian" >> /etc/hosts
+
+  - action: raw
+    origin: filesystem
+    source: {{$ubootPath}}/idbloader.img
+    offset: '{{ sector 64 }}'
+
+  - action: raw
+    origin: filesystem
+    source: {{$ubootPath}}/u-boot.itb
+    offset: '{{ sector 16384 }}'
+
+  - action: run
+    description: Update U-Boot menu
+    chroot: true
+    command: u-boot-update
+
+  - action: run
+    description: Generate PXE configuration
+    chroot: true
+    command: mkdir /pxelinux.cfg && sed "/^#/d; /root=UUID/d" /boot/extlinux/extlinux.conf > /pxelinux.cfg/default
+
+  - action: pack
+    file: {{$nfsImage}}
+    compression: gz
