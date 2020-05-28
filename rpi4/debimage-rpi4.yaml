@@ -60,7 +60,7 @@ actions:
 
   - action: run
     chroot: true
-    command: rm -rf /boot/firmware/kernel*.img /boot/firmware/*.dtb /boot/firmware/overlays
+    command: rm -rf /boot/firmware/kernel*.img /boot/firmware/overlays
 
   - action: run
     chroot: true
