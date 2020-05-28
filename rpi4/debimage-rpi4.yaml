@@ -1,5 +1,5 @@
-{{- $firmware_version := or .firmware_version "1.20180919" -}}
-{{- $image := or .image "debian-rpi3bplus.img" -}}
+{{- $firmware_version := or .firmware_version "1.20200212" -}}
+{{- $image := or .image "debian-rpi4.img" -}}
 
 architecture: arm64
 
@@ -38,7 +38,7 @@ actions:
   - action: run
     description: Add hostname
     chroot: true
-    command: echo rpi3 > /etc/hostname
+    command: echo rpi4 > /etc/hostname
 
   - action: overlay
     source: overlays/networkd
@@ -59,7 +59,7 @@ actions:
 
   - action: run
     chroot: true
-    command: cp /usr/lib/u-boot/rpi_3/* /boot/firmware/
+    command: cp /usr/lib/u-boot/rpi_4/* /boot/firmware/
 
   - action: overlay
     source: overlays/fw-config
