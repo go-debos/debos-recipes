@@ -12,7 +12,7 @@ actions:
     name: firmware # name for usage directory with unpacked content in other actions
 
   - action: debootstrap
-    suite: buster
+    suite: bullseye
     components:
       - main
     mirror: https://deb.debian.org/debian
