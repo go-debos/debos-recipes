@@ -31,11 +31,6 @@ actions:
       - wget
 
   - action: run
-    description: This is a hack to remove when debian u-boot has enabled the rpi4 target
-    chroot: true
-    script: scripts/replace-u-boot-rpi.sh
-
-  - action: run
     description: Set up user
     chroot: true
     script: scripts/setup-user.sh
