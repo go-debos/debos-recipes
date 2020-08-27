@@ -42,6 +42,15 @@ actions:
     chroot: true
     command: echo console=ttymxc0,115200 > /etc/kernel/cmdline
 
+  # Make dtb easy to find (normally flash-kernel does this for us)
+  - action: run
+    chroot: true
+    command: ln -rsf /usr/lib/linux-image-*-armmp/imx6sx-nitrogen6sx.dtb /boot/dtb
+
+  - action: run
+    description: Generate boot-loader script
+    script: scripts/gen-bootscript.sh
+
   - action: image-partition
     imagename: {{ $image }}
     imagesize: 1GB
@@ -49,22 +58,30 @@ actions:
     mountpoints:
       - mountpoint: /
         partition: root
-      - mountpoint: /boot/firmware
-        partition: firmware
-        options: [ x-systemd.automount ]
     partitions:
-      - name: firmware
-        fs: fat32
-        start: 0%
-        end: 64MB
       - name: root
         fs: ext4
-        start: 64MB
+        start: 1MB
         end: 100%
         flags: [ boot ]
 
   - action: filesystem-deploy
     description: Deploying filesystem onto image
+
+  # The nitrogen6sx support is not yet in upstream u-boot, see:
+  # https://github.com/boundarydevices/u-boot-imx6/tree/boundary-v2018.07
+  # (note: must be done after partition table writing or will be wiped!)
+  - action: raw
+    description: Write u-boot SPL
+    origin: filesystem
+    source: /usr/lib/u-boot/nitrogen6sx/SPL
+    offset: 1024 # bs=1k seek=1
+
+  - action: raw
+    description: Write u-boot full version
+    origin: filesystem
+    source: /usr/lib/u-boot/nitrogen6sx/u-boot.img
+    offset: 70656 # bs=1k seek=69
 
   - action: run
     description: Create block map file
