@@ -1,16 +1,8 @@
-{{- $firmware_version := or .firmware_version "1.20180919" -}}
-{{- $image := or .image "debian-rpi3bplus.img" -}}
+{{- $image := or .image "debian-nit6sx.img" -}}
 
-architecture: arm64
+architecture: armhf
 
 actions:
-  # Download all needed proprietary stuff first
-  - action: download
-    description: Download latest version of the firmware from GitHub
-    url: https://github.com/raspberrypi/firmware/archive/{{ $firmware_version }}.tar.gz
-    unpack: true     # Unpack downloaded file
-    name: firmware # name for usage directory with unpacked content in other actions
-
   - action: debootstrap
     suite: buster
     components:
@@ -25,8 +17,8 @@ actions:
       - openssh-server
       - adduser
       - systemd-sysv
-      - linux-image-arm64
-      - u-boot-rpi
+      - linux-image-armmp
+      - u-boot-imx
       - u-boot-menu
       - wget
 
@@ -38,7 +30,7 @@ actions:
   - action: run
     description: Add hostname
     chroot: true
-    command: echo rpi3 > /etc/hostname
+    command: echo nit6sx > /etc/hostname
 
   - action: overlay
     source: overlays/networkd
@@ -47,27 +39,9 @@ actions:
     chroot: true
     script: scripts/setup-networking.sh
 
-  # add firmware
-  - action: overlay
-    origin: firmware
-    source: firmware-{{ $firmware_version }}/boot
-    destination: /boot/firmware
-
   - action: run
     chroot: true
-    command: rm -rf /boot/firmware/kernel*.img /boot/firmware/*.dtb /boot/firmware/overlays
-
-  - action: run
-    chroot: true
-    command: cp /usr/lib/u-boot/rpi_3/* /boot/firmware/
-
-  - action: overlay
-    source: overlays/fw-config
-    destination: /boot/firmware
-
-  - action: run
-    chroot: true
-    command: echo console=ttyS1,115200 > /etc/kernel/cmdline
+    command: echo console=ttyS0,115200 > /etc/kernel/cmdline
 
   - action: overlay
     source: overlays/u-boot-menu
