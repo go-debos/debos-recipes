@@ -19,7 +19,6 @@ actions:
       - systemd-sysv
       - linux-image-armmp
       - u-boot-imx
-      - u-boot-menu
       - wget
 
   - action: run
@@ -42,13 +41,6 @@ actions:
   - action: run
     chroot: true
     command: echo console=ttymxc0,115200 > /etc/kernel/cmdline
-
-  - action: overlay
-    source: overlays/u-boot-menu
-
-  - action: run
-    chroot: true
-    command: u-boot-update
 
   - action: image-partition
     imagename: {{ $image }}
