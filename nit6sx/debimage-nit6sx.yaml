@@ -41,7 +41,7 @@ actions:
 
   - action: run
     chroot: true
-    command: echo console=ttyS0,115200 > /etc/kernel/cmdline
+    command: echo console=ttymxc0,115200 > /etc/kernel/cmdline
 
   - action: overlay
     source: overlays/u-boot-menu
