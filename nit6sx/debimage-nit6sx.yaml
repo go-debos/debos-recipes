@@ -3,6 +3,11 @@
 architecture: armhf
 
 actions:
+  - action: download
+    description: Download pre-built nit6sx u-boot binary
+    url: http://linode.boundarydevices.com/u-boot-images/u-boot.nitrogen6sx
+    name: bootloader
+
   - action: debootstrap
     suite: buster
     components:
@@ -71,17 +76,24 @@ actions:
   # The nitrogen6sx support is not yet in upstream u-boot, see:
   # https://github.com/boundarydevices/u-boot-imx6/tree/boundary-v2018.07
   # (note: must be done after partition table writing or will be wiped!)
-  - action: raw
-    description: Write u-boot SPL
-    origin: filesystem
-    source: /usr/lib/u-boot/nitrogen6sx/SPL
-    offset: 1024 # bs=1k seek=1
 
   - action: raw
-    description: Write u-boot full version
-    origin: filesystem
-    source: /usr/lib/u-boot/nitrogen6sx/u-boot.img
-    offset: 70656 # bs=1k seek=69
+    description: Write u-boot binary to raw image load addr
+    origin: bootloader
+    source: .
+    offset: 1024
+
+  #- action: raw
+  #  description: Write u-boot SPL
+  #  origin: filesystem
+  #  source: /usr/lib/u-boot/nitrogen6sx/SPL
+  #  offset: 1024 # bs=1k seek=1
+
+  #- action: raw
+  #  description: Write u-boot full version
+  #  origin: filesystem
+  #  source: /usr/lib/u-boot/nitrogen6sx/u-boot.img
+  #  offset: 70656 # bs=1k seek=69
 
   - action: run
     description: Create block map file
