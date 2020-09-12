@@ -1,5 +1,9 @@
-{{- $firmware_version := or .firmware_version "1.20180919" -}}
-{{- $image := or .image "debian-rpi3bplus.img" -}}
+{{- $firmware_version := or .firmware_version "1.20201022" -}}
+{{- $mirror := or .mirror "http://deb.debian.org/debian" -}}
+{{- $suite := or .suite "bullseye" -}}
+{{- $kernel := or .kernel "linux-image-arm64" -}}
+{{- $cmdline := or .cmdline " rootwait ro fsck.mode=auto fsck.repair=yes console=ttyS1,115200" -}}
+{{- $image := or .image "debian-rpi64.img" -}}
 
 architecture: arm64
 
@@ -7,28 +11,72 @@ actions:
   # Download all needed proprietary stuff first
   - action: download
     description: Download latest version of the firmware from GitHub
-    url: https://github.com/raspberrypi/firmware/archive/{{ $firmware_version }}.tar.gz
+    url: http://github.com/raspberrypi/firmware/archive/{{ $firmware_version }}.tar.gz
     unpack: true     # Unpack downloaded file
     name: firmware # name for usage directory with unpacked content in other actions
 
   - action: debootstrap
-    suite: buster
+    suite: {{ $suite }}
     components:
       - main
-    mirror: https://deb.debian.org/debian
+      - non-free
+    mirror: {{ $mirror }}
     variant: minbase
 
   - action: apt
     description: Install extra packages
     packages:
-      - sudo
-      - openssh-server
       - adduser
+      - bluetooth
+      - ca-certificates
+      - dbus-user-session
+      - iproute2
+      - i2c-tools
+      - libnss-resolve
+      - openssh-server
+      - sudo
       - systemd-sysv
-      - linux-image-arm64
-      - u-boot-rpi
       - u-boot-menu
-      - wget
+      - u-boot-rpi
+      - vim-tiny
+
+  - action: overlay
+    description: Install U-Boot menu configuration
+    source: overlays/u-boot-menu
+
+  - action: apt
+    description: Install kernel and firmware packages for RPi
+    packages:
+      - {{ $kernel}}
+      - firmware-brcm80211
+      - raspi-firmware
+      - rpi.gpio-common
+
+  - action: overlay
+    description: Copy config.txt
+    source: overlays/fw-config
+    destination: /boot/firmware
+
+  - action: run
+    description: Install U-Boot
+    chroot: false
+    command: sh -c "cp -av ${ROOTDIR}/usr/lib/u-boot/rpi_arm64/u-boot.bin ${ROOTDIR}/boot/firmware/"
+
+  - action: run
+    description: Copy DTBs for the kernel
+    chroot: false
+    command: sh -c "mkdir -p ${ROOTDIR}/boot/dtbs; cp -rav ${ROOTDIR}/usr/lib/linux-image-*-arm64/broadcom ${ROOTDIR}/boot/dtbs/"
+
+  - action: overlay
+    description: Install RPi firmware
+    origin: firmware
+    source: firmware-{{ $firmware_version }}/boot
+    destination: /boot/firmware
+
+  - action: run
+    description: Cleanup firmware partition
+    chroot: false
+    command: sh -c "rm -rf ${ROOTDIR}/boot/firmware/kernel* ${ROOTDIR}/boot/firmware/vmlinuz* ${ROOTDIR}/boot/firmware/initrd.img*"
 
   - action: run
     description: Set up user
@@ -38,7 +86,7 @@ actions:
   - action: run
     description: Add hostname
     chroot: true
-    command: echo rpi3 > /etc/hostname
+    command: echo rpi64 > /etc/hostname
 
   - action: overlay
     source: overlays/networkd
@@ -46,35 +94,6 @@ actions:
   - action: run
     chroot: true
     script: scripts/setup-networking.sh
-
-  # add firmware
-  - action: overlay
-    origin: firmware
-    source: firmware-{{ $firmware_version }}/boot
-    destination: /boot/firmware
-
-  - action: run
-    chroot: true
-    command: rm -rf /boot/firmware/kernel*.img /boot/firmware/*.dtb /boot/firmware/overlays
-
-  - action: run
-    chroot: true
-    command: cp /usr/lib/u-boot/rpi_3/* /boot/firmware/
-
-  - action: overlay
-    source: overlays/fw-config
-    destination: /boot/firmware
-
-  - action: run
-    chroot: true
-    command: echo console=ttyS1,115200 > /etc/kernel/cmdline
-
-  - action: overlay
-    source: overlays/u-boot-menu
-
-  - action: run
-    chroot: true
-    command: u-boot-update
 
   - action: image-partition
     imagename: {{ $image }}
@@ -99,6 +118,8 @@ actions:
 
   - action: filesystem-deploy
     description: Deploying filesystem onto image
+    setup-kernel-cmdline: true
+    append-kernel-cmdline: {{ $cmdline }}
 
   - action: run
     description: Create block map file
