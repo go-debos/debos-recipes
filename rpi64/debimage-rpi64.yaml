@@ -51,7 +51,6 @@ actions:
     packages:
       - {{ $kernel}}
       - firmware-brcm80211
-      - raspi-firmware
       - rpi.gpio-common
 
   - action: overlay
@@ -77,6 +76,11 @@ actions:
     destination: /boot/firmware
 
   {{ else }}
+  - action: apt
+    description: Install RPi firmware package
+    packages:
+      - raspi-firmware
+
   - action: run
     description: Install RPi boot firmware (Debian)
     chroot: false
@@ -91,6 +95,13 @@ actions:
     description: Use upstream DTBs naming
     chroot: false
     command:  sh -c "echo upstream_kernel=1 >> ${ROOTDIR}/boot/firmware/config.txt"
+
+  # Do not need to keep firmware package after firmware partition setup.
+  # raspi-firmware contains kernel postinstall script incompatible with U-Boot
+  - action: run
+    description: Remove RPi firmware package
+    chroot: true
+    command: dpkg -P raspi-firmware
   {{ end }}
 
   - action: run
