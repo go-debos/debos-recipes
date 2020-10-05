@@ -120,6 +120,10 @@ actions:
     command: echo rpi64 > /etc/hostname
 
   - action: overlay
+    description: Autoload modules
+    source: overlays/modules
+
+  - action: overlay
     source: overlays/networkd
 
   - action: run
