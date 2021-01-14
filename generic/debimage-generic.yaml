@@ -1,0 +1,74 @@
+{{- $architecture := or .architecture "amd64" -}}
+{{- $image := or .image "debian-generic.img" -}}
+{{- $kernel := or .kernel "linux-image-generic" -}}
+{{- $suite := or .suite "buster" -}}
+
+{{if eq $suite "buster" "stable"}}
+    {{if eq $architecture "i386"}}
+        {{ $kernel = or .kernel "linux-image-686"}}
+    {{else}}
+        {{$kernel = or .kernel (printf "linux-image-%s" $architecture)}}
+    {{end}}
+{{end}}
+
+
+architecture: {{$architecture}}
+
+actions:
+
+  - action: debootstrap
+    suite: "{{$suite}}"
+    components:
+      - main
+    mirror: https://deb.debian.org/debian
+    variant: minbase
+
+  - action: apt
+    packages: [adduser, sudo, systemd-sysv]
+
+  - action: run
+    chroot: true
+    description: Set hostname
+    command: echo "debian" > /etc/hostname
+    
+  - action: run
+    description: Set up user
+    chroot: true
+    command: >
+      /sbin/adduser --gecos user --disabled-password --shell /bin/bash user
+      && /sbin/adduser user sudo
+      && sh -c "echo 'user:user' | chpasswd"
+
+  - action: apt
+    packages: [
+{{if eq $architecture "i386" "amd64"}}
+      grub-pc,
+{{end}}
+      $kernel
+    ]
+
+  - action: image-partition
+    imagename: {{ $image }}
+    imagesize: 1GB
+    partitiontype: msdos
+    mountpoints:
+      - mountpoint: /
+        partition: root
+    partitions:
+      - name: root
+        fs: ext4
+        start: 1MiB
+        end: 100%
+        flags: [ boot ]
+
+  - action: filesystem-deploy
+    description: Deploying filesystem onto image
+
+  - action: run
+    description: Install bootloader
+    chroot: true
+    command: >
+{{if eq $architecture "i386" "amd64"}}
+      update-grub
+      && grub-install /dev/disk/by-id/virtio-fakedisk-0
+{{end}}
