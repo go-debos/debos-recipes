@@ -14,14 +14,14 @@ env exists ramdiskaddr || setenv ramdiskaddr 84000000
 # console=ttymxc0
 # baudrate=115200
 
-setenv mmcbootdev=@MMCBOOTDEV@
+setenv mmcbootdev '@MMCBOOTDEV@'
 
 setenv prepbootargs 'if test -n "${console}"; then setenv bootargs "${bootargs} console=${console}" ; fi ; setenv bootargs ${bootargs} cma=256M ; setenv bootargs ${bootargs} root=LABEL=root'
 #setenv bootargs  ${bootargs} quiet
 
-setenv loadkernel 'load mmc ${mcbootdev} ${loadaddr} /vmlinuz'
-setenv loadfdt 'load mmc ${mcbootdev} ${fdt_addr} /boot/dtb'
-setenv loadrd 'load mmc ${mcbootdev} ${ramdiskaddr} /initrd.img && setenv rdsize $filesize'
+setenv loadkernel 'load mmc ${mmcbootdev} ${loadaddr} /vmlinuz'
+setenv loadfdt 'load mmc ${mmcbootdev} ${fdt_addr} /boot/dtb'
+setenv loadrd 'load mmc ${mmcbootdev} ${ramdiskaddr} /initrd.img && setenv rdsize $filesize'
 setenv loadall 'run loadkernel; run loadfdt; run loadrd'
 
 setenv bootmmc 'mmc dev 0; run prepbootargs; run loadall; bootz ${loadaddr} ${ramdiskaddr}:${rdsize} ${fdt_addr}'
