@@ -2,7 +2,11 @@
 # Puts below info in a script and generate boot.scr
 # This script assumes it's executed from 'artifact directory' (/scratch)
 
-cat << 'EOF' > bootscr.txt
+MMCBOOTDEV="${1:-0}"
+
+echo "Using 'mmc dev $MMCBOOTDEV' as boot device."
+
+cat << 'EOF' > bootscr.txt.in
 # debos nit6sx boot script
 # loadaddr=0x82000000
 env exists ramdiskaddr || setenv ramdiskaddr 84000000
@@ -10,13 +14,14 @@ env exists ramdiskaddr || setenv ramdiskaddr 84000000
 # console=ttymxc0
 # baudrate=115200
 
+setenv mmcbootdev=@MMCBOOTDEV@
 
 setenv prepbootargs 'if test -n "${console}"; then setenv bootargs "${bootargs} console=${console}" ; fi ; setenv bootargs ${bootargs} cma=256M ; setenv bootargs ${bootargs} root=LABEL=root'
 #setenv bootargs  ${bootargs} quiet
 
-setenv loadkernel 'load mmc 0 ${loadaddr} /vmlinuz'
-setenv loadfdt 'load mmc 0 ${fdt_addr} /boot/dtb'
-setenv loadrd 'load mmc 0 ${ramdiskaddr} /initrd.img && setenv rdsize $filesize'
+setenv loadkernel 'load mmc ${mcbootdev} ${loadaddr} /vmlinuz'
+setenv loadfdt 'load mmc ${mcbootdev} ${fdt_addr} /boot/dtb'
+setenv loadrd 'load mmc ${mcbootdev} ${ramdiskaddr} /initrd.img && setenv rdsize $filesize'
 setenv loadall 'run loadkernel; run loadfdt; run loadrd'
 
 setenv bootmmc 'mmc dev 0; run prepbootargs; run loadall; bootz ${loadaddr} ${ramdiskaddr}:${rdsize} ${fdt_addr}'
@@ -24,5 +29,7 @@ setenv bootmmc 'mmc dev 0; run prepbootargs; run loadall; bootz ${loadaddr} ${ra
 run bootmmc
 
 EOF
+
+sed -e "s/@MMCBOOTDEV@/$MMCBOOTDEV/" < bootscr.txt.in > bootscr.txt
 
 mkimage -A arm -T script -C none -n "Debos Nitrogen6SoloX script" -d bootscr.txt $ROOTDIR/boot/boot.scr
