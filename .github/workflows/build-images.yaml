@@ -1,0 +1,74 @@
+name: Build images
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# TODO create debos reusable workflow action which this recipe / others can use: https://docs.github.com/en/actions/using-workflows/reusing-workflows#creating-a-reusable-workflow
+# TODO make this a strategy: matrix to build all images in parallel
+# TODO build ospacks first
+
+# TODO add all-green job
+# TODO add dependabot for this ci file
+
+jobs:
+  build_images:
+    name: Build images
+    timeout-minutes: 120
+
+    # Determine which machine type to run on.
+    #
+    # Nested virtualisation is not enabled on the default GitHub-hosted runners. See:
+    #  - https://github.com/actions/runner-images/discussions/7191
+    #  - https://github.blog/changelog/2023-02-23-hardware-accelerated-android-virtualization-on-actions-windows-and-linux-larger-hosted-runners/
+    #
+    # Use a self-hosted runner (with access to /dev/kvm) tagged with `kvm` if
+    # the branch is part of the go-debos organisation. Otherwise, run on a shared
+    # runner without any nested virtualisation.
+    runs-on: ${{ github.repository_owner == 'go-debos' && 'kvm' || 'ubuntu-latest' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up qemu-user-static (required for --disable-fakemachine)
+        uses: docker/setup-qemu-action@v2
+
+      - name: Determine if machine has nested virtualisation
+        run:
+          if [ -e /dev/kvm ]; then
+            echo "KVM_EXISTS=true" >> $GITHUB_ENV;
+          else
+            echo "KVM_EXISTS=false" >> $GITHUB_ENV;
+          fi
+
+      # Workaround for
+      - name: Create output directory
+        run: mkdir out
+
+      # If kvm is not available, run without fakemachine (e.g. directly on the host)
+      # as running without nested virtualisation (e.g. uml/qemu backends) is far
+      # too slow.
+      - name: Build rpi64 image
+        run:
+          docker run
+          --cgroupns=private
+          -v $(pwd):/recipes
+          -w /recipes
+          --tmpfs /scratch:exec
+          --tmpfs /run
+          --privileged
+          ${{ env.KVM_EXISTS == 'false' && '-v /dev:/dev' || '' }}
+          -e TMP=/scratch
+          -e SYSTEMD_NSPAWN_UNIFIED_HIERARCHY=1
+          ghcr.io/go-debos/debos:main
+            --artifactdir=out
+            ${{ env.KVM_EXISTS == 'false' && '--disable-fakemachine' || '' }}
+            rpi64/debimage-rpi64.yaml
+
+      - name: Publish rpi64 artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: rpi64
+          path: out/
+          if-no-files-found: error
