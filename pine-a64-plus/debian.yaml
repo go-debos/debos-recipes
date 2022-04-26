@@ -1,0 +1,101 @@
+
+{{- $hostname := or .hostname "debian-pine-a64plus" -}}
+{{- $image := or .image "debos-debian-bullseye-pine-a64.img" -}}
+
+architecture: "arm64"
+
+
+actions:
+  - action: debootstrap
+    suite: "bullseye"
+    components:
+      - main
+      - contrib
+      - non-free
+    mirror: https://deb.debian.org/debian
+    variant: minbase
+
+  - action: apt
+    description: Install some packages
+    recommends: false
+    packages: 
+        - sudo
+        - openssh-server
+        - isc-dhcp-client
+        - iproute2
+        - ifupdown
+
+# Boot and kernel setup
+
+  - action: apt
+    description: Install kernel, bootloader and init packages
+    update: false
+    recommends: false
+    packages:
+        - u-boot-menu
+        - u-boot-sunxi
+        - linux-image-arm64
+        - init
+
+  - action: overlay
+    source: overlays/u-boot
+
+  - action: run
+    description: U-Boot menu update
+    chroot: true
+    command: /usr/sbin/u-boot-update
+
+# End of kernel and boot setup
+
+  - action: run
+    description: Setup hostname
+    chroot: true
+    script: scripts/setup-hostname.sh {{ $hostname }}
+
+  - action: run
+    description: Setup user
+    chroot: true
+    script: scripts/setup-user.sh
+
+  - action: overlay
+    description: Network setup
+    source: overlays/network-setup
+
+  - action: image-partition
+    imagename: {{ $image }}
+    imagesize: 1GB
+    partitiontype: msdos
+    mountpoints:
+      - mountpoint: /
+        partition: root
+    partitions:
+      - name: root
+        fs: ext4
+        start: 2MB
+        end: 100%
+        flags: [ boot ]
+
+  - action: filesystem-deploy
+    description: Deploying filesystem onto image
+
+  - action: raw
+    description: Writing U-Boot SPL image
+    origin: filesystem
+    source: /usr/lib/u-boot/pine64_plus/sunxi-spl.bin
+    offset: {{ sector 16 }}
+  
+  - action: raw
+    description: Writing U-Boot FIT image
+    origin: filesystem
+    source: /usr/lib/u-boot/pine64_plus/u-boot-sunxi-with-spl.fit.itb
+    offset: {{ sector 80 }}
+
+  - action: run
+    description: Create block map (bmap)
+    postprocess: true
+    command: bmaptool create {{ $image }} > {{ $image }}.bmap
+
+  - action: run
+    description: Pack result image
+    postprocess: true
+    command: xz -z -v -f -T 0 {{ $image }}
