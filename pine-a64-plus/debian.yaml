@@ -1,24 +1,25 @@
-
+{{- $board := or .board "pine64_plus" -}}
+{{- $suite := or .suite "bullseye" -}}
+{{- $mirror := or .mirror "http://deb.debian.org/debian" -}}
 {{- $hostname := or .hostname "debian-pine-a64plus" -}}
-{{- $image := or .image "debos-debian-bullseye-pine-a64.img" -}}
+{{- $image := or .image (printf "debos-debian-%s-%s.img" $suite $board) -}}
 
 architecture: "arm64"
 
-
 actions:
   - action: debootstrap
-    suite: "bullseye"
+    suite: {{ $suite }}
     components:
       - main
       - contrib
       - non-free
-    mirror: https://deb.debian.org/debian
+    mirror: {{ $mirror }}
     variant: minbase
 
   - action: apt
     description: Install some packages
     recommends: false
-    packages: 
+    packages:
         - sudo
         - openssh-server
         - isc-dhcp-client
@@ -50,7 +51,9 @@ actions:
   - action: run
     description: Setup hostname
     chroot: true
-    script: scripts/setup-hostname.sh {{ $hostname }}
+    command: |
+        echo "{{ $hostname }}" >/etc/hostname
+        echo "127.0.0.1	localhost {{ $hostname }}" >/etc/hosts
 
   - action: run
     description: Setup user
@@ -81,13 +84,13 @@ actions:
   - action: raw
     description: Writing U-Boot SPL image
     origin: filesystem
-    source: /usr/lib/u-boot/pine64_plus/sunxi-spl.bin
+    source: /usr/lib/u-boot/{{ $board }}/sunxi-spl.bin
     offset: {{ sector 16 }}
-  
+
   - action: raw
     description: Writing U-Boot FIT image
     origin: filesystem
-    source: /usr/lib/u-boot/pine64_plus/u-boot-sunxi-with-spl.fit.itb
+    source: /usr/lib/u-boot/{{ $board }}/u-boot-sunxi-with-spl.fit.itb
     offset: {{ sector 80 }}
 
   - action: run
