@@ -41,6 +41,7 @@ actions:
       - u-boot-menu
       - u-boot-rpi
       - vim-tiny
+      - systemd-timesyncd
 
   - action: overlay
     description: Install U-Boot menu configuration
