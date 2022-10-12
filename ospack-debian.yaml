@@ -1,0 +1,106 @@
+{{- $suite := or .suite "bullseye" -}}
+{{- $architecture := or .architecture "amd64" -}}
+{{- $ospack := or .ospack (printf "ospack-debian-%s-%s" $suite $architecture) -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: debootstrap
+    description: Bootstrap {{ $suite }} minbase
+    suite: {{ $suite }}
+    components:
+      - main
+    mirror: https://deb.debian.org/debian
+    variant: minbase
+
+  - action: run
+    description: Set hostname
+    command: echo "debian-ospack" > ${ROOTDIR}/etc/hostname
+
+  - action: apt
+    description: Install systemd
+    packages:
+      - systemd
+      - systemd-sysv
+      - udev
+
+  - action: apt
+    description: Install systemd user session support
+    packages:
+      - dbus-user-session
+      - libnss-systemd
+      - libpam-systemd
+
+  - action: apt
+    description: Install systemd-timesyncd
+    packages:
+      - systemd-timesyncd
+
+# In bullseye and below, systemd-resolved is part of the systemd package.
+{{ if not (eq $suite "bullseye") }}
+  - action: apt
+    description: Install systemd-resolved
+    packages:
+      - systemd-resolved
+{{ end }}
+
+# Manually enable systemd services in bullseye and below
+{{ if eq $suite "bullseye" }}
+  - action: run
+    description: Enable systemd-resolved
+    chroot: true
+    command: |
+      systemctl enable systemd-resolved
+
+  - action: run
+    description: Setup /etc/resolv.conf
+    command: ln -s /run/systemd/resolve/stub-resolv.conf ${ROOTDIR}/etc/resolv.conf
+{{ end }}
+
+  - action: overlay
+    description: Configure systemd-networkd
+    source: overlays/systemd-networkd
+
+  - action: run
+    description: Enable systemd-networkd
+    chroot: true
+    command: |
+      systemctl enable systemd-networkd
+
+  - action: overlay
+    description: Configure locales
+    source: overlays/locales
+
+  - action: apt
+    description: Install locales
+    packages:
+      - locales
+
+  - action: apt
+    description: Install packages for user management
+    packages:
+      - adduser
+      - sudo
+
+  - action: run
+    description: Create user
+    chroot: true
+    script: scripts/create-user.sh
+
+  - action: apt
+    description: Install basic development packages
+    packages:
+      - iproute2
+      - vim-tiny
+      - openssh-client
+
+  - action: apt
+    description: Install ssh server
+    packages:
+      - openssh-server
+
+# TODO: clean up for first boot
+
+  - action: pack
+    description: Pack into tarball
+    file: {{ $ospack }}.tar.gz
