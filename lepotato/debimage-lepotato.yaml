@@ -1,5 +1,5 @@
 {{- $mirror := or .mirror "http://deb.debian.org/debian" -}}
-{{- $suite := or .suite "bullseye" -}}
+{{- $suite := or .suite "bookworm" -}}
 {{- $adminusername := or .adminusername "user" -}}
 {{ $image := or .image (printf "debian-lepotato-%s.img" $suite) }}
 
@@ -17,7 +17,7 @@ actions:
     description: Install Kernel, U-Boot and extra packages
     packages: [ sudo, adduser, systemd-sysv, initramfs-tools, u-boot-tools, u-boot-menu, util-linux,
                 openssh-server, iproute2, network-manager, libnss-myhostname,
-                linux-image-arm64, u-boot-amlogic ]
+                linux-image-arm64, u-boot-amlogic, zstd ]
 
   - action: run
     description: Add hostname
@@ -31,7 +31,7 @@ actions:
 
   - action: image-partition
     imagename: {{ $image }}
-    imagesize: 1GB
+    imagesize: 2GB
     partitiontype: msdos
     mountpoints:
       - mountpoint: /
@@ -62,3 +62,11 @@ actions:
     description: Compressing final image
     postprocess: true
     command: gzip -f {{ $image }}
+
+  # see https://github.com/u-boot/u-boot/blob/master/doc/board/amlogic/libretech-cc.rst and
+  # and https://github.com/u-boot/u-boot/blob/master/doc/board/amlogic/pre-generated-fip.rst
+  # to install u-boot
+  - action: run
+    description: Extract bootloader u-boot.bin
+    chroot: false
+    command: cp ${ROOTDIR}/usr/lib/u-boot/libretech-cc/u-boot.bin ${ARTIFACTDIR}/u-boot.bin
