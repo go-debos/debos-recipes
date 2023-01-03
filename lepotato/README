@@ -1,6 +1,8 @@
-The u-boot binary needs some tweaks before installing it, this is described in
-u-boot-amlogic documentation (cf. doc/board/amlogic/libretech-cc.rst in u-boot
-sources).
+Amlogic does not provide sources for the firmware and tools needed to create a
+bootloader image so it is necessary to use some proprietary binaries. This is
+described in u-boot-amlogic documentation (cf. doc/board/amlogic/libretech-cc.rst
+in u-boot sources).
 
-You can retrieve libretech-cc's u-boot.bin from u-boot-amlogic package installed
-on the target image.
+The libretech-cc's u-boot.bin file from u-boot-amlogic package installed on the
+target image, and used to create the bootloader is automatically extracted
+during target image build.
