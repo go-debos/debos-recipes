@@ -1,0 +1,91 @@
+{{- $suite := or .suite "bullseye" -}}
+{{- $architecture := or .architecture "amd64" -}}
+{{- $ospack := or .ospack (printf "ospack-debian-%s-%s" $suite $architecture) -}}
+{{- $image := or .image (printf "image-uefi-%s-%s" $suite $architecture) -}}
+{{- $cmdline := or .cmdline "console=tty0 rootwait rw fsck.mode=auto fsck.repair=yes" -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: unpack
+    file: {{ $ospack }}.tar.gz
+
+  - action: image-partition
+    imagename: {{ $image }}.img
+    imagesize: 4G
+    partitiontype: gpt
+    mountpoints:
+      - mountpoint: /
+        partition: root
+      - mountpoint: /boot/efi
+        partition: efi
+        flags: [ boot ]
+    partitions:
+      - name: efi
+        fs: vfat
+        start: 0%
+        end: 256MB
+        options: [ x-systemd.automount ]
+      - name: root
+        fs: ext4
+        start: 256MB
+        end: 100%
+
+  - action: filesystem-deploy
+    setup-fstab: true
+    setup-kernel-cmdline: true
+    append-kernel-cmdline: {{ $cmdline }}
+
+  - action: run
+    description: Set hostname
+    command: echo "debian-{{ $suite }}" > ${ROOTDIR}/etc/hostname
+
+# In bullseye and below, systemd-boot is part of the systemd package.
+{{ if not (eq $suite "bullseye") }}
+  - action: apt
+    description: Install systemd-boot
+    packages:
+      - systemd-boot
+{{ end }}
+
+# bullseye and below requires some manual configuration for systemd-boot
+{{ if eq $suite "bullseye" }}
+  - action: overlay
+    description: Configure systemd-boot
+    source: overlays/systemd-boot
+
+  - action: run
+    description: Create loader entries directory
+    command: mkdir -p ${ROOTDIR}/boot/efi/$(cat ${ROOTDIR}/etc/machine-id)
+{{ end }}
+
+  - action: run
+    description: Install systemd-boot to /boot/efi
+    chroot: true
+    command: bootctl install
+
+  - action: apt
+    description: Install initramfs-tools
+    packages:
+      - initramfs-tools
+      - zstd
+
+  - action: apt
+    description: Install kernel
+    packages:
+      - linux-image-{{ $architecture }}
+
+  - action: run
+    description: Create block map for {{ $image }}.img
+    postprocess: true
+    command: bmaptool create "$ARTIFACTDIR/{{ $image }}.img" > "$ARTIFACTDIR/{{ $image }}.img.bmap"
+
+  - action: run
+    description: Compress {{ $image }}.img
+    postprocess: true
+    command: pigz -f -k "$ARTIFACTDIR/{{ $image }}.img"
+
+  - action: run
+    description: Checksum for {{ $image }}.img.gz
+    postprocess: true
+    command: sha256sum "$ARTIFACTDIR/{{ $image }}.img.gz" > "$ARTIFACTDIR/{{ $image }}.img.gz.sha256"
