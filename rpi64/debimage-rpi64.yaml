@@ -160,9 +160,9 @@ actions:
   - action: run
     description: Create block map file
     postprocess: true
-    command: bmaptool create {{ $image }} > {{ $image }}.bmap
+    command: cd $ARTIFACTDIR ; bmaptool create {{ $image }} > {{ $image }}.bmap
 
   - action: run
     description: Compressing final image
     postprocess: true
-    command: gzip -f {{ $image }}
+    command: cd $ARTIFACTDIR ; gzip -f {{ $image }}
