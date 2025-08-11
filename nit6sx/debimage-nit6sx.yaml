@@ -1,0 +1,107 @@
+{{- $image := or .image "debian-nit6sx.img" -}}
+{{- $mmcbootdev := or .mmcbootdev "0" -}}
+
+architecture: armhf
+
+actions:
+  - action: download
+    description: Download pre-built nit6sx u-boot binary
+    url: http://linode.boundarydevices.com/u-boot-images/u-boot.nitrogen6sx
+    name: bootloader
+
+  - action: debootstrap
+    suite: buster
+    components:
+      - main
+    mirror: https://deb.debian.org/debian
+    variant: minbase
+
+  - action: apt
+    description: Install extra packages
+    packages:
+      - sudo
+      - openssh-server
+      - adduser
+      - systemd-sysv
+      - linux-image-armmp
+      - u-boot-imx
+      - wget
+
+  - action: run
+    description: Set up user
+    chroot: true
+    script: scripts/setup-user.sh
+
+  - action: run
+    description: Add hostname
+    chroot: true
+    command: echo nit6sx > /etc/hostname
+
+  - action: overlay
+    source: overlays/networkd
+
+  - action: run
+    chroot: true
+    script: scripts/setup-networking.sh
+
+  - action: run
+    chroot: true
+    command: echo console=ttymxc0,115200 > /etc/kernel/cmdline
+
+  # Make dtb easy to find (normally flash-kernel does this for us)
+  - action: run
+    chroot: true
+    command: ln -rsf /usr/lib/linux-image-*-armmp/imx6sx-nitrogen6sx.dtb /boot/dtb
+
+  - action: run
+    description: Generate boot-loader script
+    script: scripts/gen-bootscript.sh {{ $mmcbootdev }}
+
+  - action: image-partition
+    imagename: {{ $image }}
+    imagesize: 1GB
+    partitiontype: msdos
+    mountpoints:
+      - mountpoint: /
+        partition: root
+    partitions:
+      - name: root
+        fs: ext4
+        start: 1MB
+        end: 100%
+        flags: [ boot ]
+
+  - action: filesystem-deploy
+    description: Deploying filesystem onto image
+
+  # The nitrogen6sx support is not yet in upstream u-boot, see:
+  # https://github.com/boundarydevices/u-boot-imx6/tree/boundary-v2018.07
+  # (note: must be done after partition table writing or will be wiped!)
+
+  - action: raw
+    description: Write u-boot binary to raw image load addr
+    origin: bootloader
+    source: .
+    offset: 1024
+
+  #- action: raw
+  #  description: Write u-boot SPL
+  #  origin: filesystem
+  #  source: /usr/lib/u-boot/nitrogen6sx/SPL
+  #  offset: 1024 # bs=1k seek=1
+
+  #- action: raw
+  #  description: Write u-boot full version
+  #  origin: filesystem
+  #  source: /usr/lib/u-boot/nitrogen6sx/u-boot.img
+  #  offset: 70656 # bs=1k seek=69
+
+  - action: run
+    description: Create block map file
+    postprocess: true
+    command: bmaptool create {{ $image }} > {{ $image }}.bmap
+
+  - action: run
+    description: Compressing final image
+    postprocess: true
+    command: gzip -f {{ $image }}
