@@ -1,0 +1,62 @@
+{{- $architecture := or .architecture "amd64" -}}
+{{- $suite := or .suite "bullseye" -}}
+{{- $kernel := or .kernel (printf "linux-image-%s" $architecture) -}}
+{{if eq $architecture "i386"}}
+    {{ $kernel = or .kernel "linux-image-686" }}
+{{end}}
+{{- $grubtarget := (printf "grub-efi-%s-bin" $architecture) -}}
+{{if eq $architecture "amd64"}}
+    {{ $grubtarget = "x86_64-efi" }}
+{{end}}
+{{ $image := or .image (printf "debian-%s-%s.img" $suite $architecture) }}
+{{- $username := or .username "user" -}}
+{{- $password := or .password "1234" -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: debootstrap
+    suite: {{ $suite }}
+    components:
+      - main
+    mirror: https://deb.debian.org/debian
+
+  - action: apt
+    description: Install packages
+    packages: [ {{ $kernel }}, grub-efi, sudo ]
+
+  - action: run
+    description: Add user
+    chroot: true
+    command: sh -c "adduser --gecos {{ $username }} --disabled-password --shell /bin/bash {{ $username }};
+      adduser {{ $username }} sudo;
+      echo "{{ $username }}:{{ $password }}" | chpasswd"
+
+  - action: image-partition
+    imagename: {{ $image }}
+    imagesize: 4GB
+    partitiontype: gpt
+    mountpoints:
+      - mountpoint: /
+        partition: root
+      - mountpoint: /boot/efi
+        partition: esp
+    partitions:
+      - name: esp
+        fs: fat32
+        start: 0%
+        end: 256MB
+        flags: [ esp, boot ]
+      - name: root
+        fs: ext4
+        start: 256MB
+        end: 100%
+
+  - action: filesystem-deploy
+    description: Deploy filesystem onto image
+
+  - action: run
+    description: Install GRUB
+    chroot: true
+    command: sh -c "update-grub;
+      grub-install --target={{ $grubtarget }} --efi-directory=/boot/efi"
